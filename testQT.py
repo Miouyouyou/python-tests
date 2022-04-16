@@ -4,13 +4,16 @@ import sys
 
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from gooey import Gooey
-from PyQt5.QtWidgets import QAbstractItemView, QApplication, QWidget, QPushButton, QListWidget, QVBoxLayout, QHBoxLayout
-from PyQt5.QtCore import pyqtSlot
+from renderers.qt.widgets import SelectionMenu, provide_user_choice
 
 logging.basicConfig(level=logging.DEBUG)
 
 def list_dirs(from_dir=".", containing_files=[]) -> list:
-    entries = os.scandir(from_dir)
+    entries = None
+    try:
+        entries = os.scandir(from_dir)
+    except:
+        return []
     dirs = []
     for entry in entries:
         if entry.is_dir():
@@ -26,91 +29,42 @@ def list_dirs(from_dir=".", containing_files=[]) -> list:
                 dirs.append(directory)
     return dirs
 
-
-class ListWidget(QListWidget):
-    pass
-
-class SelectionMenu(QWidget):
-    def __init__(self, title, choices=[]):
-        super().__init__()
-        self.title = title
-        self.left = 10
-        self.top = 10
-        self.width = 320
-        self.height = 200
-        self.choices = choices
-        self.initUI(choices)
-    
-    def cb_selection_changed(self):
-        items = []
-        for item in self.selectionList.selectedItems():
-            items.append(item.text())
-        self.select_button.setEnabled(len(items) > 0)
-        self.items = items
-    
-    def cb_cancel(self):
-        sys.exit(1)
-        
-    def cb_select(self):
-        print(self.items)
-        sys.exit(0)
-    
-    def initUI(self, choices=[]):
-        self.setWindowTitle(self.title)
-        self.setGeometry(self.left, self.top, self.width, self.height)
-        
-        layout = QVBoxLayout(self)
-        
-        selectionList = ListWidget(self)
-        for choice in choices:
-            selectionList.addItem(choice)
-        selectionList.setSelectionMode(QAbstractItemView.MultiSelection)
-        self.selectionList = selectionList
-        selectionList.itemSelectionChanged.connect(self.cb_selection_changed)
-        layout.addWidget(selectionList)
-        
-        buttonsLayout = QHBoxLayout(self)
-        button = QPushButton('Cancel', self)
-        button.setToolTip('Cancel the operation')
-        button.clicked.connect(self.cb_cancel)
-        buttonsLayout.addWidget(button)
-        
-        button = QPushButton('Select', self)
-        button.setToolTip('This is an example button')
-        button.clicked.connect(self.cb_select)
-        button.setEnabled(False)
-        buttonsLayout.addWidget(button)
-        self.select_button = button
-        
-        layout.addLayout(buttonsLayout)
-        self.setLayout(layout)
-        
-        self.show()
-
-    @pyqtSlot()
-    def on_click(self):
-        print('PyQt5 button click')
-
-
-def provide_user_choice(choices=[]):
-    app = QApplication(sys.argv)
-    ex = SelectionMenu(title="Armbian docker installation module", choices=choices)
-    app.exec_()
-    return ex.items
-    
-
 if __name__ == '__main__':
-    available_dockers = list_dirs('softwares', ['docker-compose.yml'])
-    images_list = "\n\t" + "\n\t".join(available_dockers)
+    # TODO : Parse from configuration file
+    default_templates_dir = './softwares'
+    default_install_dir = '/opt/armbian/installed/docker'
+    available_dockers = list_dirs(default_templates_dir, ['docker-compose.yml'])
+    installed_dockers = list_dirs(default_install_dir, ['docker-compose.yml'])
+    installed_dockers.append('haproxy')
+    images_list = '\n\t' + '\n\t'.join(available_dockers)
     parser = ArgumentParser(description='Armbian docker installation module', formatter_class=RawDescriptionHelpFormatter, epilog='IMAGES :' + images_list)
     parser.add_argument('--install', nargs='+', metavar='IMAGE', choices=available_dockers, help='Add docker installations')
+    parser.add_argument('--templates-dir', nargs='?', default=default_templates_dir, help='Directory path to list templates from')
+    parser.add_argument('--install-dir', nargs='?', default=default_install_dir, help='Directory path where docker images are installed')
     args = parser.parse_args()
     print(args)
+    
+    install_dir = args.install_dir
+    templates_dir = args.templates_dir
+    
+    print(install_dir)
+    print(templates_dir)
+    
     if args.install == None or len(args.install) == 0:
         try:
-            args.install = provide_user_choice(available_dockers)
-        except:
+            installed_set = set(installed_dockers)
+            selected, unselected = provide_user_choice(available_dockers, installed_set)
+            available_set = set(available_dockers)
+            
+            
+            print(f'selected: {selected} - unselected: {unselected}')
+            to_install = (selected - installed_set)
+            to_remove = (installed_set & unselected)
+            print(f'Install : {to_install}, Remove: {to_remove}')
+        except Exception as e:
+            print("An exception occured")
+            print(e)
+        #    print(args.install)
             parser.print_help()
-    
-    print(args.install)
+
 
