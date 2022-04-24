@@ -1,12 +1,20 @@
 import logging
 import os
+from pathlib import Path
+import shutil
 import sys
 
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
-from gooey import Gooey
 from renderers.qt.widgets import SelectionMenu, provide_user_choice
 
 logging.basicConfig(level=logging.DEBUG)
+
+config = {
+    'templates_dir': './softwares',
+    'install_dir': '/opt/armbian/docker',
+    'install': [],
+    'remove': []
+}
 
 def list_dirs(from_dir=".", containing_files=[]) -> list:
     entries = None
@@ -29,42 +37,76 @@ def list_dirs(from_dir=".", containing_files=[]) -> list:
                 dirs.append(directory)
     return dirs
 
+class Module:
+    def __init__(self, configuration):
+        self.configuration = configuration
+
+    def docker_install(self, configuration=None):
+        configuration = self.configuration if configuration == None else configuration
+        install_path = Path(configuration["install_dir"])
+        templates_path = Path(configuration["templates_dir"])
+        try:
+            install_path.mkdir( mode=0o755, parents=True, exist_ok=True )
+        except Exception as e:
+            print(f'mkdir -p {install_path} failed: ')
+            print(e)
+            sys.exit(1)
+
+        print(configuration)
+        for selected_dir in configuration["install"]:
+            shutil.copytree((templates_path / selected_dir), (install_path / selected_dir))
+
+    def docker_remove(self, configuration=None):
+        configuration = self.configuration if configuration == None else configuration
+        install_path = Path(configuration["install_dir"])
+
+        for dir_to_remove in configuration["remove"]:
+            remove_path = install_path / dir_to_remove
+            try:
+                shutil.rmtree(remove_path)
+            except Exception as e:
+                print(f'Could not delete {remove_path}')
+                continue
+
+    def run(self):
+        self.docker_remove()
+        self.docker_install()
+        
+def module_payload(configuration):
+    docker_install(configuration["install"])
+
 if __name__ == '__main__':
     # TODO : Parse from configuration file
-    default_templates_dir = './softwares'
-    default_install_dir = '/opt/armbian/installed/docker'
-    available_dockers = list_dirs(default_templates_dir, ['docker-compose.yml'])
-    installed_dockers = list_dirs(default_install_dir, ['docker-compose.yml'])
-    installed_dockers.append('haproxy')
+    available_dockers = list_dirs(config["templates_dir"], ['docker-compose.yml'])
+    installed_dockers = list_dirs(config["install_dir"], ['docker-compose.yml'])
     images_list = '\n\t' + '\n\t'.join(available_dockers)
     parser = ArgumentParser(description='Armbian docker installation module', formatter_class=RawDescriptionHelpFormatter, epilog='IMAGES :' + images_list)
     parser.add_argument('--install', nargs='+', metavar='IMAGE', choices=available_dockers, help='Add docker installations')
-    parser.add_argument('--templates-dir', nargs='?', default=default_templates_dir, help='Directory path to list templates from')
-    parser.add_argument('--install-dir', nargs='?', default=default_install_dir, help='Directory path where docker images are installed')
+    parser.add_argument('--templates-dir', nargs='?', default=config['templates_dir'], help='Directory path to list templates from')
+    parser.add_argument('--install-dir', nargs='?', default=config['install_dir'], help='Directory path where docker images are installed')
     args = parser.parse_args()
-    print(args)
     
     install_dir = args.install_dir
     templates_dir = args.templates_dir
     
-    print(install_dir)
-    print(templates_dir)
-    
     if args.install == None or len(args.install) == 0:
-        try:
+        #try:
             installed_set = set(installed_dockers)
             selected, unselected = provide_user_choice(available_dockers, installed_set)
             available_set = set(available_dockers)
-            
             
             print(f'selected: {selected} - unselected: {unselected}')
             to_install = (selected - installed_set)
             to_remove = (installed_set & unselected)
             print(f'Install : {to_install}, Remove: {to_remove}')
-        except Exception as e:
-            print("An exception occured")
-            print(e)
+            config["install"] = to_install
+            config["remove"] = to_remove
+            Module(config).run()
+
+        #except Exception as e:
+        #    print("An exception occured")
+        #    print(e)
         #    print(args.install)
-            parser.print_help()
+        #    parser.print_help()
 
 
