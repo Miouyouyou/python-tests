@@ -12,7 +12,7 @@ class SelectionMenu(QWidget):
         self.width = 320
         self.height = 200
         self.choices = choices
-        self.selections = []
+        self.selections = [set(), set()]
         self.initUI(choices, selected_choices)
     
     def checked_items(self):
